@@ -438,6 +438,33 @@ export function cssPostPlugin(config: ResolvedConfig): Plugin {
         return css
       }
 
+      const inlineCSS2JS = async () => {
+        // legacy build, inline css
+        chunkCSS = await processChunkCSS(chunkCSS, {
+          inlined: true,
+          minify: true
+        })
+        const style = `__vite_style__`
+        const injectCode =
+          `var ${style} = document.createElement('style');` +
+          `${style}.innerHTML = ${JSON.stringify(chunkCSS)};` +
+          `document.head.appendChild(${style});`
+        if (config.build.sourcemap) {
+          const s = new MagicString(code)
+          s.prepend(injectCode)
+          return {
+            code: s.toString(),
+            map: s.generateMap({ hires: true })
+          }
+        } else {
+          return { code: injectCode + code }
+        }
+      }
+
+      if (!config.build.cssExtract) {
+        return await inlineCSS2JS()
+      }
+
       if (config.build.cssCodeSplit) {
         if (isPureCssChunk) {
           // this is a shared CSS-only chunk that is empty.
@@ -456,26 +483,7 @@ export function cssPostPlugin(config: ResolvedConfig): Plugin {
           })
           chunk.viteMetadata.importedCss.add(this.getFileName(fileHandle))
         } else if (!config.build.ssr) {
-          // legacy build, inline css
-          chunkCSS = await processChunkCSS(chunkCSS, {
-            inlined: true,
-            minify: true
-          })
-          const style = `__vite_style__`
-          const injectCode =
-            `var ${style} = document.createElement('style');` +
-            `${style}.innerHTML = ${JSON.stringify(chunkCSS)};` +
-            `document.head.appendChild(${style});`
-          if (config.build.sourcemap) {
-            const s = new MagicString(code)
-            s.prepend(injectCode)
-            return {
-              code: s.toString(),
-              map: s.generateMap({ hires: true })
-            }
-          } else {
-            return { code: injectCode + code }
-          }
+          return await inlineCSS2JS()
         }
       } else {
         // non-split extracted CSS will be minified together
